@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MARS-GIS // Planetary Survey & Traverse Planner</title>
+
+    <!-- Leaflet 1.9.4 CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+
+    <!-- Technical Aerospace Fonts: IBM Plex Sans & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --bg-canvas: #090510;
+            --panel-bg: rgba(18, 10, 31, 0.94);
+            --panel-header: #1a0f2e;
+            --panel-surface: #22143b;
+            --panel-border: #3b2463;
+            --ink-primary: #f4f0ff;
+            --ink-secondary: #c3b5df;
+            --ink-muted: #8f7db3;
+            --accent-purple: #7c3aed;
+            --btn-white: #ffffff;
+            --btn-white-hover: #f3efff;
+            --btn-ink: #160b28;
+            --btn-active-blue: #7dd3fc;
+            --btn-active-blue-border: #bae6fd;
+            --btn-active-ink: #08182b;
+            --rule-line: #2e1b4f;
+            --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-canvas);
+            font-family: var(--font-sans);
+            color: var(--ink-primary);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Full-Viewport Map Container */
+        #map {
+            width: 100%;
+            height: 100%;
+            background: #07040d;
+            cursor: crosshair;
+        }
+
+        /* Leaflet Overrides */
+        .leaflet-container {
+            background: #07040d !important;
+            font-family: var(--font-sans) !important;
+        }
+
+        .leaflet-control-zoom {
+            border: 1px solid var(--panel-border) !important;
+            border-radius: 12px !important;
+            overflow: hidden;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65) !important;
+        }
+
+        .leaflet-control-zoom a {
+            background-color: var(--panel-header) !important;
+            color: var(--ink-primary) !important;
+            border-bottom: 1px solid var(--rule-line) !important;
+            width: 32px !important;
+            height: 32px !important;
+            line-height: 30px !important;
+            font-family: var(--font-mono) !important;
+            font-weight: 600 !important;
+        }
+
+        .leaflet-control-zoom a:hover {
+            background-color: var(--btn-active-blue) !important;
+            color: var(--btn-active-ink) !important;
+        }
+
+        .leaflet-control-attribution {
+            background: rgba(18, 10, 31, 0.92) !important;
+            color: var(--ink-secondary) !important;
+            font-family: var(--font-mono) !important;
+            font-size: 10px !important;
+            border-top: 1px solid var(--panel-border);
+            border-left: 1px solid var(--panel-border);
+            border-top-left-radius: 10px;
+            padding: 3px 8px !important;
+        }
+
+        .leaflet-control-attribution a {
+            color: var(--btn-active-blue) !important;
+        }
+
+        /* Reopen Pill Buttons when Panels are Closed */
+        .reopen-pill {
+            position: absolute;
+            z-index: 1050;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            background: var(--panel-bg);
+            color: var(--ink-primary);
+            border: 1px solid var(--panel-border);
+            border-radius: 999px;
+            padding: 8px 16px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7);
+            transition: transform 0.14s ease, background 0.14s ease, color 0.14s ease;
+        }
+
+        .reopen-pill:hover {
+            background: var(--btn-active-blue);
+            color: var(--btn-active-ink);
+            border-color: var(--btn-active-blue-border);
+            transform: translateY(-1px);
+        }
+
+        .reopen-pill.visible {
+            display: inline-flex;
+        }
+
+        #reopenLayersPill {
+            top: 14px;
+            left: 56px;
+        }
+
+        #reopenTraversePill {
+            top: 14px;
+            right: 14px;
+        }
+
+        /* Top-Left Mission Header & Layer Deck */
+        .hud-top-left {
+            position: absolute;
+            top: 14px;
+            left: 56px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: calc(100vw - 72px);
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+
+        .hud-top-left.panel-hidden,
+        .hud-top-right.panel-hidden {
+            display: none !important;
+        }
+
+        .instrument-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.72);
+            backdrop-filter: blur(8px);
+        }
+
+        .mission-banner {
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            border-bottom: 1px solid var(--panel-border);
+            background: var(--panel-header);
+        }
+
+        .mission-title-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .mission-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--ink-primary);
+            letter-spacing: -0.01em;
+        }
+
+        .banner-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Panel Close Button (White -> Light Blue on Hover/Active) */
+        .panel-close-btn {
+            appearance: none;
+            width: 26px;
+            height: 26px;
+            border-radius: 999px;
+            border: 1px solid #d8d0eb;
+            background: var(--btn-white);
+            color: var(--btn-ink);
+            font-family: var(--font-mono);
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+        }
+
+        .panel-close-btn:hover,
+        .panel-close-btn:active {
+            background: var(--btn-active-blue);
+            border-color: var(--btn-active-blue-border);
+            color: var(--btn-active-ink);
+        }
+
+        /* Layer Switcher Bar */
+        .layer-deck {
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 9px;
+        }
+
+        .deck-label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--ink-secondary);
+        }
+
+        .layer-buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+        }
+
+        /* White Buttons -> Light Blue When Selected */
+        .layer-btn {
+            appearance: none;
+            background: var(--btn-white);
+            border: 1px solid #e2dcf2;
+            border-radius: 10px;
+            padding: 7px 8px;
+            font-family: var(--font-sans);
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--btn-ink);
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .layer-btn:hover {
+            background: var(--btn-white-hover);
+            border-color: var(--btn-active-blue);
+        }
+
+        .layer-btn.active {
+            background: var(--btn-active-blue);
+            border-color: var(--btn-active-blue-border);
+            color: var(--btn-active-ink);
+            box-shadow: 0 0 12px rgba(125, 211, 252, 0.45);
+        }
+
+        .layer-btn .layer-code {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            opacity: 0.8;
+            font-weight: 600;
+        }
+
+        /* Overlay Opacity Control */
+        .opacity-control-row {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 6px 10px;
+            background: var(--panel-surface);
+            border: 1px solid var(--rule-line);
+            border-radius: 10px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--ink-secondary);
+        }
+
+        .opacity-control-row.visible {
+            display: flex;
+        }
+
+        .opacity-control-row input[type="range"] {
+            flex: 1;
+            accent-color: var(--btn-active-blue);
+            cursor: pointer;
+            height: 4px;
+        }
+
+        /* Overlay Pill Toggles */
+        .overlay-toggles {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding-top: 6px;
+            border-top: 1px solid var(--rule-line);
+        }
+
+        .toggle-pill-btn {
+            flex: 1;
+            appearance: none;
+            background: var(--btn-white);
+            color: var(--btn-ink);
+            border: 1px solid #e2dcf2;
+            border-radius: 10px;
+            padding: 6px 10px;
+            font-family: var(--font-sans);
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+        }
+
+        .toggle-pill-btn.active {
+            background: var(--btn-active-blue);
+            border-color: var(--btn-active-blue-border);
+            color: var(--btn-active-ink);
+            box-shadow: 0 0 10px rgba(125, 211, 252, 0.35);
+        }
+
+        /* Legend Strip */
+        .legend-bar {
+            padding: 8px 12px;
+            background: var(--panel-header);
+            border-top: 1px solid var(--rule-line);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .legend-title {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--ink-secondary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .legend-gradient {
+            height: 8px;
+            width: 100%;
+            border: 1px solid var(--panel-border);
+            border-radius: 999px;
+        }
+
+        .legend-ticks {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 9px;
+            color: var(--ink-muted);
+        }
+
+        /* Right Traverse & Outpost Telemetry Console */
+        .hud-top-right {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            z-index: 1000;
+            width: 325px;
+            max-width: calc(100vw - 28px);
+        }
+
+        .console-header {
+            background: var(--panel-header);
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--panel-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .console-header h2 {
+            margin: 0;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--ink-primary);
+        }
+
+        .console-body {
+            padding: 12px 14px;
+        }
+
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 7px;
+            margin-bottom: 10px;
+        }
+
+        .telemetry-cell {
+            background: var(--panel-surface);
+            border: 1px solid var(--rule-line);
+            padding: 7px 9px;
+            border-radius: 10px;
+        }
+
+        .telemetry-cell.wide {
+            grid-column: span 2;
+        }
+
+        .t-label {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--ink-muted);
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        .t-value {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--ink-primary);
+        }
+
+        .t-value.highlight {
+            color: var(--btn-active-blue);
+        }
+
+        .waypoint-list-wrap {
+            border: 1px solid var(--rule-line);
+            background: #10081c;
+            border-radius: 10px;
+            max-height: 125px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+        }
+
+        .wp-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 9px;
+            border-bottom: 1px solid var(--rule-line);
+            color: var(--ink-secondary);
+            cursor: pointer;
+            transition: background 0.12s ease;
+        }
+
+        .wp-row:hover {
+            background: #24153d;
+            color: var(--ink-primary);
+        }
+
+        .wp-row:last-child {
+            border-bottom: none;
+        }
+
+        .wp-row.base-row {
+            background: #1f1236;
+            color: var(--ink-primary);
+            font-weight: 600;
+        }
+
+        .wp-tag-name {
+            color: var(--btn-active-blue);
+            font-weight: 700;
+        }
+
+        .action-bar {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 6px;
+        }
+
+        /* Command Buttons */
+        .btn-cmd {
+            appearance: none;
+            border: 1px solid #e2dcf2;
+            background: var(--btn-white);
+            color: var(--btn-ink);
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 700;
+            padding: 8px 4px;
+            border-radius: 10px;
+            cursor: pointer;
+            text-align: center;
+            transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+        }
+
+        .btn-cmd:hover {
+            background: var(--btn-white-hover);
+            border-color: var(--btn-active-blue);
+        }
+
+        .btn-cmd.selected,
+        .btn-cmd:active {
+            background: var(--btn-active-blue);
+            border-color: var(--btn-active-blue-border);
+            color: var(--btn-active-ink);
+            box-shadow: 0 0 10px rgba(125, 211, 252, 0.45);
+        }
+
+        .field-notes {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid var(--rule-line);
+            font-size: 11px;
+            line-height: 1.45;
+            color: var(--ink-secondary);
+        }
+
+        /* Bottom-Left Live Cursor Telemetry Bar */
+        .cursor-probe {
+            position: absolute;
+            bottom: 14px;
+            left: 14px;
+            z-index: 1000;
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 999px;
+            padding: 7px 14px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--ink-primary);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.65);
+            max-width: calc(100vw - 28px);
+        }
+
+        .probe-item span {
+            color: var(--ink-muted);
+            font-size: 10px;
+        }
+
+        /* Landmark Map Labels */
+        .landmark-label {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            pointer-events: auto;
+        }
+
+        .landmark-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            color: #f4f0ff;
+            text-shadow: 0 1px 2px #000000, 0 0 5px #000000;
+            white-space: nowrap;
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+        }
+
+        .landmark-tag .dot {
+            width: 6px;
+            height: 6px;
+            border: 1px solid #ffffff;
+            background: var(--btn-active-blue);
+            transform: rotate(45deg);
+            flex-shrink: 0;
+        }
+
+        /* Custom Leaflet Popups */
+        .leaflet-popup-content-wrapper {
+            background: var(--panel-bg) !important;
+            color: var(--ink-primary) !important;
+            border: 1px solid var(--panel-border) !important;
+            border-radius: 14px !important;
+            box-shadow: 0 6px 22px rgba(0, 0, 0, 0.78) !important;
+        }
+
+        .leaflet-popup-tip {
+            background: var(--panel-bg) !important;
+        }
+
+        .leaflet-popup-content {
+            margin: 11px 13px !important;
+            font-family: var(--font-sans) !important;
+            font-size: 12px !important;
+            line-height: 1.4 !important;
+            min-width: 215px;
+        }
+
+        .popup-kicker {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            text-transform: uppercase;
+            color: var(--btn-active-blue);
+            font-weight: 700;
+            letter-spacing: 0.06em;
+        }
+
+        .popup-title {
+            font-weight: 700;
+            font-size: 13px;
+            margin: 2px 0 4px 0;
+            color: var(--ink-primary);
+        }
+
+        .popup-meta {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--ink-secondary);
+        }
+
+        .popup-edit-group {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--rule-line);
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .popup-input {
+            width: 100%;
+            background: #10081c;
+            border: 1px solid var(--panel-border);
+            color: var(--ink-primary);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            padding: 6px 8px;
+            border-radius: 8px;
+        }
+
+        .popup-save-btn {
+            align-self: flex-end;
+            background: var(--btn-white);
+            color: var(--btn-ink);
+            border: 1px solid #e2dcf2;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 700;
+            padding: 5px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.14s ease, color 0.14s ease;
+        }
+
+        .popup-save-btn:hover,
+        .popup-save-btn:active {
+            background: var(--btn-active-blue);
+            color: var(--btn-active-ink);
+        }
+
+        /* Toast Notification */
+        .status-toast {
+            position: absolute;
+            bottom: 56px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1200;
+            background: var(--panel-header);
+            color: var(--ink-primary);
+            border: 1px solid var(--btn-active-blue);
+            padding: 8px 16px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            border-radius: 999px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+        }
+
+        .status-toast.visible {
+            opacity: 1;
+        }
+
+        @media (max-width: 900px) {
+            .hud-top-left {
+                left: 10px;
+                top: 10px;
+                width: calc(100vw - 20px);
+                max-width: none;
+            }
+            #reopenLayersPill {
+                left: 10px;
+                top: 10px;
+            }
+            #reopenTraversePill {
+                right: 10px;
+                top: auto;
+                bottom: 54px;
+            }
+            .leaflet-top.leaflet-left {
+                top: auto;
+                bottom: 58px;
+                left: 10px;
+            }
+            .layer-buttons {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .hud-top-right {
+                top: auto;
+                bottom: 54px;
+                right: 10px;
+                width: calc(100vw - 20px);
+                max-height: 46vh;
+                overflow-y: auto;
+            }
+            .cursor-probe {
+                left: 10px;
+                bottom: 10px;
+                font-size: 10px;
+                gap: 8px;
+                border-radius: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Reopen Pill Buttons (Appear when panels are closed) -->
+    <button class="reopen-pill" id="reopenLayersPill" title="Reopen Planetary Layers Panel">
+        <span>+ LAYERS</span>
+    </button>
+    <button class="reopen-pill" id="reopenTraversePill" title="Reopen Outpost & Traverse Panel">
+        <span>+ ROUTE PLANNER</span>
+    </button>
+
+    <!-- Top-Left Cartographic Layer Control Panel -->
+    <div class="hud-top-left" id="layersPanel">
+        <div class="instrument-card">
+            <div class="mission-banner">
+                <div class="mission-title-group">
+                    <span class="mission-title">Mars Surface &amp; Outpost Traverse Planner</span>
+                </div>
+                <div class="banner-actions">
+                    <button class="panel-close-btn" id="closeLayersBtn" title="Close Layers Panel" aria-label="Close Layers Panel">×</button>
+                </div>
+            </div>
+
+            <div class="layer-deck">
+                <div class="deck-label-row">
+                    <span>Planetary Data Layers</span>
+                    <span id="activeLayerTag">BASE OPTICAL</span>
+                </div>
+                <div class="layer-buttons" role="radiogroup" aria-label="Planetary Map Layers">
+                    <button class="layer-btn active" data-layer="base">
+                        <span>Base Map</span>
+                        <span class="layer-code">MDIM 2.1</span>
+                    </button>
+                    <button class="layer-btn" data-layer="elevation">
+                        <span>Elevation</span>
+                        <span class="layer-code">MOLA DEM</span>
+                    </button>
+                    <button class="layer-btn" data-layer="co2">
+                        <span>CO₂ Map</span>
+                        <span class="layer-code">co2.jpg</span>
+                    </button>
+                    <button class="layer-btn" data-layer="h2o">
+                        <span>H₂O Map</span>
+                        <span class="layer-code">water.jpg</span>
+                    </button>
+                </div>
+
+                <!-- Overlay Opacity Slider (Visible on CO2 and H2O layers) -->
+                <div class="opacity-control-row" id="opacityControlRow">
+                    <label for="overlayOpacitySlider">OVERLAY OPACITY:</label>
+                    <input type="range" id="overlayOpacitySlider" min="0.15" max="1" step="0.05" value="0.72" />
+                    <span id="opacityValText">72%</span>
+                </div>
+
+                <div class="overlay-toggles">
+                    <button type="button" class="toggle-pill-btn active" id="toggleLandmarksBtn" aria-pressed="true">
+                        <span>Craters &amp; Landmarks (12)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dynamic Scientific Legend -->
+            <div class="legend-bar" id="legendBar">
+                <div class="legend-title">
+                    <span id="legendLabel">VIKING ORBITER GLOBAL COLOR MOSAIC (232m/px)</span>
+                    <span id="legendUnit">ALBEDO</span>
+                </div>
+                <div class="legend-gradient" id="legendGradient" style="background: linear-gradient(90deg, #3b261d, #8c4d32, #c97f53, #e6b894);"></div>
+                <div class="legend-ticks" id="legendTicks">
+                    <span>Dark Basalt</span>
+                    <span>Regolith</span>
+                    <span>Dust Mantled</span>
+                    <span>High Albedo</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top-Right Outpost & Traverse Route Planner Panel -->
+    <div class="hud-top-right instrument-card" id="traversePanel">
+        <div class="console-header">
+            <h2>Outpost &amp; Traverse Log</h2>
+            <button class="panel-close-btn" id="closeTraverseBtn" title="Close Route Planner Panel" aria-label="Close Route Planner Panel">×</button>
+        </div>
+        <div class="console-body">
+            <div class="telemetry-grid">
+                <div class="telemetry-cell wide">
+                    <span class="t-label">Base Station Coordinates (X Marker)</span>
+                    <span class="t-value" id="outpostCoords">18.38°N, 77.58°E</span>
+                </div>
+                <div class="telemetry-cell">
+                    <span class="t-label">Traverse Distance</span>
+                    <span class="t-value highlight" id="totalDistance">0.00 km</span>
+                </div>
+                <div class="telemetry-cell">
+                    <span class="t-label">Est. Rover Transit</span>
+                    <span class="t-value" id="transitTime">0.0 hrs</span>
+                </div>
+                <div class="telemetry-cell">
+                    <span class="t-label">Outpost Nodes</span>
+                    <span class="t-value" id="waypointCount">1</span>
+                </div>
+                <div class="telemetry-cell">
+                    <span class="t-label">Last Leg Bearing</span>
+                    <span class="t-value" id="lastBearing">--°</span>
+                </div>
+            </div>
+
+            <div class="waypoint-list-wrap" id="waypointLog">
+                <!-- Populated dynamically -->
+            </div>
+
+            <div class="action-bar">
+                <button class="btn-cmd" id="undoBtn" title="Remove last outpost waypoint">UNDO</button>
+                <button class="btn-cmd" id="clearRouteBtn" title="Reset route to Base Station">RESET</button>
+                <button class="btn-cmd" id="exportJsonBtn" title="Download Traverse GeoJSON">JSON</button>
+                <button class="btn-cmd" id="exportCsvBtn" title="Download Waypoint Coordinates CSV">CSV</button>
+            </div>
+
+            <div class="field-notes">
+                <strong>Operations:</strong> Drag the <strong>X</strong> marker to relocate the Base Station. Click inside Martian bounds (90°S–90°N, 180°W–180°E) to plot outpost X waypoints. Click any waypoint marker to edit its label.
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom-Left Live Cursor Telemetry Readout -->
+    <div class="cursor-probe" id="cursorProbe">
+        <div class="probe-item"><span>CURSOR:</span> <strong id="probeLatLon">0.00°N, 0.00°E</strong></div>
+        <div class="probe-item"><span>ELEV:</span> <strong id="probeElev">-1.80 km</strong></div>
+        <div class="probe-item"><span>H₂ WEH:</span> <strong id="probeH2">4.2 wt%</strong></div>
+        <div class="probe-item"><span>CO₂ SURF:</span> <strong id="probeCO2">6.40 mbar</strong></div>
+    </div>
+
+    <!-- Non-blocking status notification -->
+    <div class="status-toast" id="statusToast"></div>
+
+    <!-- Interactive Map Viewport -->
+    <div id="map"></div>
+
+    <!-- Leaflet 1.9.4 JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <script>
+        (function () {
+            "use strict";
+
+            // =========================================================================
+            // 1. PLANETARY CONSTANTS & BOUNDARY CONSTRAINTS (IAU MARS 2015)
+            // =========================================================================
+            const MARS_RADIUS_KM = 3389.5;
+            const EARTH_RADIUS_KM = 6371.0;
+            const RADIUS_RATIO = MARS_RADIUS_KM / EARTH_RADIUS_KM;
+            const ROVER_SPEED_KMH = 3.2;
+
+            const PLANET_BOUNDS = L.latLngBounds(
+                L.latLng(-90, -180),
+                L.latLng(90, 180)
+            );
+
+            function clampLatLng(latlng) {
+                const clampedLat = Math.max(-90, Math.min(90, latlng.lat));
+                const clampedLng = Math.max(-180, Math.min(180, latlng.lng));
+                return L.latLng(clampedLat, clampedLng);
+            }
+
+            function isWithinPlanetBounds(latlng) {
+                return (
+                    latlng.lat >= -90 &&
+                    latlng.lat <= 90 &&
+                    latlng.lng >= -180 &&
+                    latlng.lng <= 180
+                );
+            }
+
+            function formatCoord(lat, lng) {
+                const ns = lat >= 0 ? "N" : "S";
+                const ew = lng >= 0 ? "E" : "W";
+                return `${Math.abs(lat).toFixed(2)}°${ns}, ${Math.abs(lng).toFixed(2)}°${ew}`;
+            }
+
+            let toastTimeout = null;
+            function showToast(msg) {
+                const el = document.getElementById("statusToast");
+                el.textContent = msg;
+                el.classList.add("visible");
+                clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => {
+                    el.classList.remove("visible");
+                }, 2600);
+            }
+
+            // =========================================================================
+            // 2. INITIALIZE LEAFLET MAP IN PLATE CARRÉE (EPSG:4326) WITH FREE ZOOM OUT
+            // =========================================================================
+            const map = L.map("map", {
+                crs: L.CRS.EPSG4326,
+                center: [0, 0],
+                zoom: 2,
+                minZoom: 0.9,
+                maxZoom: 8,
+                worldCopyJump: false
+            });
+
+            // =========================================================================
+            // 3. PLANETARY TILE & IMAGE OVERLAY LAYERS (BASE, ELEVATION, CO2, H2O)
+            // =========================================================================
+            let currentOverlayOpacity = 0.72;
+
+            // Layer 1: Base Map (NASA Mars Trek Viking Global Color Mosaic)
+            const baseMapLayer = L.tileLayer(
+                "https://trek.nasa.gov/tiles/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg",
+                {
+                    attribution: "NASA / JPL-Caltech / USGS Mars Trek (Viking MDIM2.1)",
+                    tileSize: 256,
+                    noWrap: true,
+                    bounds: PLANET_BOUNDS
+                }
+            );
+
+            // Layer 2: Elevation Layer (NASA Mars Trek MOLA Color Hillshade)
+            const elevationLayer = L.tileLayer(
+                "https://trek.nasa.gov/tiles/Mars/EQ/Mars_MGS_MOLA_ClrShade_merge_global_463m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg",
+                {
+                    attribution: "NASA / JPL-Caltech / GSFC MOLA Science Team",
+                    tileSize: 256,
+                    noWrap: true,
+                    bounds: PLANET_BOUNDS
+                }
+            );
+
+            // Layer 3: CO2 Concentration Overlay using local 'co2.jpg'
+            const co2ImageOverlay = L.imageOverlay("co2.jpg", [[-90, -180], [90, 180]], {
+                opacity: currentOverlayOpacity,
+                interactive: false,
+                attribution: "CO₂ Distribution Dataset (co2.jpg)"
+            });
+
+            // Layer 4: H2O (Water Ice) Overlay using local 'water.jpg'
+            const h2oImageOverlay = L.imageOverlay("water.jpg", [[-90, -180], [90, 180]], {
+                opacity: currentOverlayOpacity,
+                interactive: false,
+                attribution: "H₂O / Subsurface Water Ice Dataset (water.jpg)"
+            });
+
+            // Scientific Planetary Field Model (for Live Cursor Telemetry Readout)
+            function samplePlanetaryFields(lat, lng) {
+                const dichotomy = lat > 15 ? -2.4 : 1.4;
+                const tharsisBulge = 6.2 * Math.exp(-((lat - 2) ** 2 / 750 + (lng + 108) ** 2 / 900));
+                const olympusPeak = 16.5 * Math.exp(-((lat - 18.65) ** 2 / 35 + (lng + 133.8) ** 2 / 35));
+                const elysiumPeak = 9.0 * Math.exp(-((lat - 25.0) ** 2 / 60 + (lng - 147.2) ** 2 / 60));
+                const hellasBasin = -8.2 * Math.exp(-((lat + 42.4) ** 2 / 180 + (lng - 70.5) ** 2 / 260));
+                const argyreBasin = -5.4 * Math.exp(-((lat + 49.7) ** 2 / 110 + (lng + 43.4) ** 2 / 140));
+                const vallesTrough = -4.8 * Math.exp(-((lat + 13.9) ** 2 / 18 + (lng + 59.2) ** 2 / 350));
+
+                const elevKm = dichotomy + tharsisBulge + olympusPeak + elysiumPeak + hellasBasin + argyreBasin + vallesTrough;
+
+                const absLat = Math.abs(lat);
+                const polarBand = 54 / (1 + Math.exp(-(absLat - 54) / 4.6));
+                const arabiaH2Lobe = 7.5 * Math.exp(-((lat - 16) ** 2 / 400 + (lng - 28) ** 2 / 520));
+                const medusaeH2Lobe = 6.8 * Math.exp(-((lat + 4) ** 2 / 340 + (lng + 156) ** 2 / 480));
+                const arcadiaH2Pocket = 15.0 * Math.exp(-((lat - 46.7) ** 2 / 150 + (lng - 168.0) ** 2 / 240));
+                const h2WehPercent = Math.min(72, Math.max(1.8, 2.5 + polarBand + arabiaH2Lobe + medusaeH2Lobe + arcadiaH2Pocket));
+
+                const co2PressureMbar = 6.1 * Math.exp(-elevKm / 11.1);
+
+                return { elevKm, h2WehPercent, co2PressureMbar };
+            }
+
+            // Initialize default base map
+            baseMapLayer.addTo(map);
+
+            // =========================================================================
+            // 5. CRATERS & GEOLOGICAL LANDMARKS LAYER (12 MAJOR FEATURES)
+            // =========================================================================
+            const MARTIAN_LANDMARKS = [
+                { name: "Olympus Mons", lat: 18.65, lng: -133.8, type: "Shield Volcano", elev: "+21.9 km", note: "Largest volcanic edifice in the Solar System; 624 km wide." },
+                { name: "Gale Crater", lat: -5.4, lng: 137.8, type: "Impact Crater", elev: "-4.5 km", note: "154 km crater containing Aeolis Mons (Mount Sharp) layered strata." },
+                { name: "Jezero Crater", lat: 18.38, lng: 77.58, type: "Paleolake Crater", elev: "-2.5 km", note: "45 km crater featuring a preserved ancient river delta fan." },
+                { name: "Valles Marineris", lat: -13.9, lng: -59.2, type: "Tectonic Canyon", elev: "-7.0 km", note: "4,000 km equatorial rift canyon system up to 7 km deep." },
+                { name: "Hellas Planitia", lat: -42.4, lng: 70.5, type: "Impact Basin", elev: "-8.2 km", note: "Deepest impact basin on Mars; highest surface atmospheric pressure." },
+                { name: "Arcadia Planitia", lat: 46.7, lng: 168.0, type: "Volcanic Plain", elev: "-3.1 km", note: "Smooth northern lowland plain with shallow subsurface ice deposits." },
+                { name: "Elysium Mons", lat: 25.02, lng: 147.21, type: "Shield Volcano", elev: "+12.6 km", note: "Primary volcanic peak of the eastern Elysium province." },
+                { name: "Utopia Planitia", lat: 46.7, lng: 117.5, type: "Impact Basin", elev: "-4.1 km", note: "3,300 km northern impact basin with scalloped permafrost terrain." },
+                { name: "Argyre Planitia", lat: -49.7, lng: -43.4, type: "Impact Basin", elev: "-5.2 km", note: "Multi-ring southern impact basin surrounded by rugged massifs." },
+                { name: "Syrtis Major", lat: 8.4, lng: 69.5, type: "Low-Relief Shield", elev: "+1.1 km", note: "Dark basaltic volcanic shield west of Isidis Planitia." },
+                { name: "Tharsis Montes", lat: 1.0, lng: -112.5, type: "Volcanic Chain", elev: "+14.0 km", note: "Linear chain of Ascraeus, Pavonis, and Arsia Montes." },
+                { name: "Korolev Crater", lat: 72.77, lng: 164.42, type: "Ice-Filled Crater", elev: "-1.5 km", note: "81 km northern crater containing a 1.8 km thick permanent water-ice mound." }
+            ];
+
+            const landmarksLayerGroup = L.layerGroup().addTo(map);
+
+            MARTIAN_LANDMARKS.forEach((feature) => {
+                const labelIcon = L.divIcon({
+                    className: "landmark-label",
+                    html: `<div class="landmark-tag"><span class="dot"></span><span>${feature.name.toUpperCase()}</span></div>`,
+                    iconSize: [0, 0],
+                    iconAnchor: [0, 0]
+                });
+
+                const marker = L.marker([feature.lat, feature.lng], {
+                    icon: labelIcon,
+                    keyboard: false
+                });
+
+                marker.bindPopup(`
+                    <div class="popup-kicker">${feature.type}</div>
+                    <div class="popup-title">${feature.name}</div>
+                    <div class="popup-meta">COORD: ${formatCoord(feature.lat, feature.lng)} | ELEV: ${feature.elev}</div>
+                    <div style="margin-top:5px;">${feature.note}</div>
+                `);
+
+                marker.addTo(landmarksLayerGroup);
+            });
+
+            // =========================================================================
+            // 6. LAYER SWITCHING LOGIC, OPACITY SLIDER, & LEGEND UPDATES
+            // =========================================================================
+            let activeLayerKey = "base";
+
+            const LAYER_CONFIGS = {
+                base: {
+                    tag: "BASE OPTICAL",
+                    label: "VIKING ORBITER GLOBAL COLOR MOSAIC (232m/px)",
+                    unit: "ALBEDO",
+                    hasOverlay: false,
+                    gradient: "linear-gradient(90deg, #3b261d, #8c4d32, #c97f53, #e6b894)",
+                    ticks: ["Dark Basalt", "Regolith", "Dust Mantled", "High Albedo"]
+                },
+                elevation: {
+                    tag: "MOLA ELEVATION",
+                    label: "MOLA LASER ALTIMETER TOPOGRAPHIC RELIEF (463m/px)",
+                    unit: "DATUM KM",
+                    hasOverlay: false,
+                    gradient: "linear-gradient(90deg, #1f3c88, #2d8a8a, #7db864, #d99b38, #c43c24, #f5f5f5)",
+                    ticks: ["-8 km", "-2 km", "+2 km", "+8 km", "+21 km"]
+                },
+                co2: {
+                    tag: "CO₂ MAP (co2.jpg)",
+                    label: "CO₂ CONCENTRATION & DISTRIBUTION OVERLAY (co2.jpg)",
+                    unit: "CO₂ LAYER",
+                    hasOverlay: true,
+                    gradient: "linear-gradient(90deg, #2a3441, #7a4958, #c96b4b, #f2d59b)",
+                    ticks: ["Low Column", "Moderate", "Elevated", "High Density"]
+                },
+                h2o: {
+                    tag: "H₂O MAP (water.jpg)",
+                    label: "WATER ICE & HYDRATION OVERLAY (water.jpg)",
+                    unit: "H₂O LAYER",
+                    hasOverlay: true,
+                    gradient: "linear-gradient(90deg, #6e563d, #3a8b88, #2779b5, #89cff0)",
+                    ticks: ["Arid Surface", "Low Hydration", "Subsurface Ice", "High Ice"]
+                }
+            };
+
+            function setActiveMapLayer(layerKey) {
+                activeLayerKey = layerKey;
+
+                if (map.hasLayer(baseMapLayer)) map.removeLayer(baseMapLayer);
+                if (map.hasLayer(elevationLayer)) map.removeLayer(elevationLayer);
+                if (map.hasLayer(co2ImageOverlay)) map.removeLayer(co2ImageOverlay);
+                if (map.hasLayer(h2oImageOverlay)) map.removeLayer(h2oImageOverlay);
+
+                if (layerKey === "base") {
+                    baseMapLayer.addTo(map);
+                } else if (layerKey === "elevation") {
+                    elevationLayer.addTo(map);
+                } else if (layerKey === "co2") {
+                    baseMapLayer.addTo(map);
+                    co2ImageOverlay.setOpacity(currentOverlayOpacity);
+                    co2ImageOverlay.addTo(map);
+                } else if (layerKey === "h2o") {
+                    baseMapLayer.addTo(map);
+                    h2oImageOverlay.setOpacity(currentOverlayOpacity);
+                    h2oImageOverlay.addTo(map);
+                }
+
+                document.querySelectorAll(".layer-btn").forEach((btn) => {
+                    btn.classList.toggle("active", btn.dataset.layer === layerKey);
+                });
+
+                const cfg = LAYER_CONFIGS[layerKey];
+                const opacityRow = document.getElementById("opacityControlRow");
+                opacityRow.classList.toggle("visible", cfg.hasOverlay);
+
+                document.getElementById("activeLayerTag").textContent = cfg.tag;
+                document.getElementById("legendLabel").textContent = cfg.label;
+                document.getElementById("legendUnit").textContent = cfg.unit;
+                document.getElementById("legendGradient").style.background = cfg.gradient;
+
+                const ticksEl = document.getElementById("legendTicks");
+                ticksEl.innerHTML = cfg.ticks.map((t) => `<span>${t}</span>`).join("");
+            }
+
+            document.querySelectorAll(".layer-btn").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    setActiveMapLayer(btn.dataset.layer);
+                });
+            });
+
+            document.getElementById("overlayOpacitySlider").addEventListener("input", (e) => {
+                currentOverlayOpacity = parseFloat(e.target.value);
+                document.getElementById("opacityValText").textContent = `${Math.round(currentOverlayOpacity * 100)}%`;
+
+                if (activeLayerKey === "co2") {
+                    co2ImageOverlay.setOpacity(currentOverlayOpacity);
+                } else if (activeLayerKey === "h2o") {
+                    h2oImageOverlay.setOpacity(currentOverlayOpacity);
+                }
+            });
+
+            let landmarksVisible = true;
+            const toggleLandmarksBtn = document.getElementById("toggleLandmarksBtn");
+            toggleLandmarksBtn.addEventListener("click", () => {
+                landmarksVisible = !landmarksVisible;
+                toggleLandmarksBtn.classList.toggle("active", landmarksVisible);
+                toggleLandmarksBtn.setAttribute("aria-pressed", String(landmarksVisible));
+                if (landmarksVisible) {
+                    landmarksLayerGroup.addTo(map);
+                } else {
+                    map.removeLayer(landmarksLayerGroup);
+                }
+            });
+
+            // Panel Close & Reopen Handlers
+            const layersPanel = document.getElementById("layersPanel");
+            const reopenLayersPill = document.getElementById("reopenLayersPill");
+            document.getElementById("closeLayersBtn").addEventListener("click", () => {
+                layersPanel.classList.add("panel-hidden");
+                reopenLayersPill.classList.add("visible");
+            });
+            reopenLayersPill.addEventListener("click", () => {
+                layersPanel.classList.remove("panel-hidden");
+                reopenLayersPill.classList.remove("visible");
+            });
+
+            const traversePanel = document.getElementById("traversePanel");
+            const reopenTraversePill = document.getElementById("reopenTraversePill");
+            document.getElementById("closeTraverseBtn").addEventListener("click", () => {
+                traversePanel.classList.add("panel-hidden");
+                reopenTraversePill.classList.add("visible");
+            });
+            reopenTraversePill.addEventListener("click", () => {
+                traversePanel.classList.remove("panel-hidden");
+                reopenTraversePill.classList.remove("visible");
+            });
+
+            // =========================================================================
+            // 7. DIAGONAL CROSS (X) BASE STATION ICON & OUTPOST WAYPOINT PINS
+            // =========================================================================
+            const baseCrossIcon = L.divIcon({
+                className: "base-station-cross",
+                html: `
+                    <svg width="26" height="26" viewBox="0 0 26 26" xmlns="http://www.w3.org/2000/svg" style="display:block; filter: drop-shadow(0 1px 4px rgba(0,0,0,0.9));">
+                        <line x1="4" y1="4" x2="22" y2="22" stroke="#ffffff" stroke-width="4.0" stroke-linecap="round" />
+                        <line x1="22" y1="4" x2="4" y2="22" stroke="#ffffff" stroke-width="4.0" stroke-linecap="round" />
+                        <line x1="4" y1="4" x2="22" y2="22" stroke="#000047" stroke-width="2.8" stroke-linecap="round" />
+                        <line x1="22" y1="4" x2="4" y2="22" stroke="#000047" stroke-width="2.8" stroke-linecap="round" />
+                    </svg>
+                `,
+                iconSize: [26, 26],
+                iconAnchor: [13, 13],
+                popupAnchor: [0, -13]
+            });
+
+            function createWaypointIcon(index) {
+                const numLabel = String(index).padStart(2, "0");
+                return L.divIcon({
+                    className: "outpost-wp-pin",
+                    html: `
+                        <div style="position:relative; width:15px; height:15px;">
+                            <svg width="15" height="15" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" style="display:block; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.9));">
+                                <line x1="3" y1="3" x2="17" y2="17" stroke="#000000" stroke-width="4.5" stroke-linecap="round" />
+                                <line x1="17" y1="3" x2="3" y2="17" stroke="#000000" stroke-width="4.5" stroke-linecap="round" />
+                                <line x1="3" y1="3" x2="17" y2="17" stroke="#8d8dff" stroke-width="2.2" stroke-linecap="round" />
+                                <line x1="17" y1="3" x2="3" y2="17" stroke="#8d8dff" stroke-width="2.2" stroke-linecap="round" />
+                            </svg>
+                            <span style="position:absolute; top:-17px; left:50%; transform:translateX(-50%); background:#120a1f; color:#f4f0ff; border:1px solid #3b2463; font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:600; padding:0 4px; border-radius:6px; white-space:nowrap;">WP-${numLabel}</span>
+                        </div>
+                    `,
+                    iconSize: [15, 15],
+                    iconAnchor: [10, 10],
+                    popupAnchor: [0, -10]
+                });
+            }
+
+            // =========================================================================
+            // 8. TRAVERSE STATE & GEODESIC CALCULATIONS
+            // =========================================================================
+            let baseStationLatLng = L.latLng(18.38, 77.58);
+            let baseStationLabel = "Primary Base Station";
+            let traverseNodes = [
+                { latlng: baseStationLatLng, label: baseStationLabel }
+            ];
+            let waypointMarkers = [];
+
+            const baseStationMarker = L.marker(baseStationLatLng, {
+                icon: baseCrossIcon,
+                draggable: true,
+                zIndexOffset: 1000
+            }).addTo(map);
+
+            function bindBasePopup() {
+                baseStationMarker.bindPopup(`
+                    <div class="popup-kicker">Base Station [X]</div>
+                    <div class="popup-title">${escapeHtml(baseStationLabel)}</div>
+                    <div class="popup-meta">${formatCoord(baseStationLatLng.lat, baseStationLatLng.lng)}</div>
+                    <div class="popup-edit-group">
+                        <input type="text" class="popup-input" id="baseNameInput" value="${escapeHtml(baseStationLabel)}" placeholder="Base Station Name" />
+                        <button class="popup-save-btn" onclick="window.__updateBaseName()">UPDATE LABEL</button>
+                    </div>
+                `);
+            }
+            bindBasePopup();
+
+            window.__updateBaseName = function () {
+                const input = document.getElementById("baseNameInput");
+                if (input && input.value.trim()) {
+                    baseStationLabel = input.value.trim();
+                    traverseNodes[0].label = baseStationLabel;
+                    bindBasePopup();
+                    baseStationMarker.closePopup();
+                    updateTraverseTelemetry();
+                    showToast(`Updated Base Station: ${baseStationLabel}`);
+                }
+            };
+
+            function escapeHtml(str) {
+                return str
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;");
+            }
+
+            const routeUnderlay = L.polyline([baseStationLatLng], {
+                color: "#0b0d0f",
+                weight: 2.2,
+                opacity: 0.8
+            }).addTo(map);
+
+            const routeLine = L.polyline([baseStationLatLng], {
+                color: "#eceff4",
+                weight: 1.1,
+                opacity: 0.95,
+                dashArray: "4, 4"
+            }).addTo(map);
+
+            function computeMarsDistanceKm(p1, p2) {
+                const earthMeters = p1.distanceTo(p2);
+                return (earthMeters * RADIUS_RATIO) / 1000;
+            }
+
+            function computeBearingDeg(p1, p2) {
+                const lat1 = (p1.lat * Math.PI) / 180;
+                const lat2 = (p2.lat * Math.PI) / 180;
+                const dLng = ((p2.lng - p1.lng) * Math.PI) / 180;
+                const y = Math.sin(dLng) * Math.cos(lat2);
+                const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+                const brng = (Math.atan2(y, x) * 180) / Math.PI;
+                return (brng + 360) % 360;
+            }
+
+            function updateTraverseTelemetry() {
+                const latlngs = traverseNodes.map((n) => n.latlng);
+                routeUnderlay.setLatLngs(latlngs);
+                routeLine.setLatLngs(latlngs);
+
+                let totalKm = 0;
+                for (let i = 0; i < latlngs.length - 1; i++) {
+                    totalKm += computeMarsDistanceKm(latlngs[i], latlngs[i + 1]);
+                }
+
+                const transitHrs = totalKm / ROVER_SPEED_KMH;
+                const lastBearing =
+                    latlngs.length > 1
+                        ? `${computeBearingDeg(latlngs[latlngs.length - 2], latlngs[latlngs.length - 1]).toFixed(0)}°`
+                        : "--°";
+
+                document.getElementById("outpostCoords").textContent = formatCoord(baseStationLatLng.lat, baseStationLatLng.lng);
+                document.getElementById("totalDistance").textContent = `${totalKm.toFixed(2)} km`;
+                document.getElementById("transitTime").textContent = `${transitHrs.toFixed(1)} hrs`;
+                document.getElementById("waypointCount").textContent = traverseNodes.length;
+                document.getElementById("lastBearing").textContent = lastBearing;
+
+                const logEl = document.getElementById("waypointLog");
+                let html = `
+                    <div class="wp-row base-row" data-idx="0">
+                        <span><span class="wp-tag-name">[X]</span> ${escapeHtml(baseStationLabel)}</span>
+                        <span>${formatCoord(baseStationLatLng.lat, baseStationLatLng.lng)}</span>
+                    </div>
+                `;
+
+                for (let i = 1; i < traverseNodes.length; i++) {
+                    const legKm = computeMarsDistanceKm(traverseNodes[i - 1].latlng, traverseNodes[i].latlng);
+                    const wpCode = `WP-${String(i).padStart(2, "0")}`;
+                    html += `
+                        <div class="wp-row" data-idx="${i}">
+                            <span><span class="wp-tag-name">${wpCode}</span> ${escapeHtml(traverseNodes[i].label)} (+${legKm.toFixed(1)}km)</span>
+                            <span>${formatCoord(traverseNodes[i].latlng.lat, traverseNodes[i].latlng.lng)}</span>
+                        </div>
+                    `;
+                }
+                logEl.innerHTML = html;
+                logEl.scrollTop = logEl.scrollHeight;
+
+                logEl.querySelectorAll(".wp-row").forEach((row) => {
+                    row.addEventListener("click", () => {
+                        const idx = parseInt(row.dataset.idx, 10);
+                        if (traverseNodes[idx]) {
+                            map.panTo(traverseNodes[idx].latlng);
+                        }
+                    });
+                });
+            }
+
+            baseStationMarker.on("drag", function (e) {
+                const rawLatLng = e.target.getLatLng();
+                const clamped = clampLatLng(rawLatLng);
+                if (!rawLatLng.equals(clamped)) {
+                    e.target.setLatLng(clamped);
+                }
+                baseStationLatLng = clamped;
+                traverseNodes[0].latlng = baseStationLatLng;
+                updateTraverseTelemetry();
+            });
+
+            baseStationMarker.on("dragend", function () {
+                bindBasePopup();
+            });
+
+            function bindWaypointPopup(marker, index) {
+                const node = traverseNodes[index];
+                const fields = samplePlanetaryFields(node.latlng.lat, node.latlng.lng);
+                const wpCode = `WP-${String(index).padStart(2, "0")}`;
+
+                marker.bindPopup(`
+                    <div class="popup-kicker">Outpost Waypoint ${wpCode}</div>
+                    <div class="popup-title">${escapeHtml(node.label)}</div>
+                    <div class="popup-meta">
+                        COORD: ${formatCoord(node.latlng.lat, node.latlng.lng)}<br/>
+                        ELEV: ${fields.elevKm >= 0 ? "+" : ""}${fields.elevKm.toFixed(2)} km | H₂ WEH: ${fields.h2WehPercent.toFixed(1)} wt%
+                    </div>
+                    <div class="popup-edit-group">
+                        <input type="text" class="popup-input" id="wpInput_${index}" value="${escapeHtml(node.label)}" placeholder="Outpost designation / notes" />
+                        <button class="popup-save-btn" onclick="window.__updateWpLabel(${index})">SAVE NOTE</button>
+                    </div>
+                `);
+            }
+
+            window.__updateWpLabel = function (index) {
+                const input = document.getElementById(`wpInput_${index}`);
+                if (input && input.value.trim() && traverseNodes[index]) {
+                    traverseNodes[index].label = input.value.trim();
+                    const marker = waypointMarkers[index - 1];
+                    if (marker) {
+                        bindWaypointPopup(marker, index);
+                        marker.closePopup();
+                    }
+                    updateTraverseTelemetry();
+                    showToast(`Updated WP-${String(index).padStart(2, "0")}: ${traverseNodes[index].label}`);
+                }
+            };
+
+            map.on("click", function (e) {
+                if (!isWithinPlanetBounds(e.latlng)) {
+                    showToast("OUT OF BOUNDS: Markers cannot be placed off the Martian coordinate grid.");
+                    return;
+                }
+
+                const wpLatLng = clampLatLng(e.latlng);
+                const wpIndex = traverseNodes.length;
+                const defaultLabel = `Outpost Site ${String(wpIndex).padStart(2, "0")}`;
+
+                traverseNodes.push({
+                    latlng: wpLatLng,
+                    label: defaultLabel
+                });
+
+                const marker = L.marker(wpLatLng, {
+                    icon: createWaypointIcon(wpIndex)
+                }).addTo(map);
+
+                bindWaypointPopup(marker, wpIndex);
+                waypointMarkers.push(marker);
+                updateTraverseTelemetry();
+            });
+
+            // =========================================================================
+            // 9. COMMAND BUTTONS & CURSOR PROBE
+            // =========================================================================
+            function flashButtonSelected(btnEl) {
+                document.querySelectorAll(".btn-cmd").forEach((b) => b.classList.remove("selected"));
+                btnEl.classList.add("selected");
+                setTimeout(() => {
+                    btnEl.classList.remove("selected");
+                }, 420);
+            }
+
+            document.getElementById("undoBtn").addEventListener("click", function () {
+                flashButtonSelected(this);
+                if (traverseNodes.length > 1) {
+                    traverseNodes.pop();
+                    const removed = waypointMarkers.pop();
+                    if (removed) map.removeLayer(removed);
+                    updateTraverseTelemetry();
+                    showToast("Removed last outpost waypoint.");
+                }
+            });
+
+            document.getElementById("clearRouteBtn").addEventListener("click", function () {
+                flashButtonSelected(this);
+                traverseNodes = [{ latlng: baseStationLatLng, label: baseStationLabel }];
+                waypointMarkers.forEach((m) => map.removeLayer(m));
+                waypointMarkers = [];
+                updateTraverseTelemetry();
+                showToast("Traverse cleared back to Base Station.");
+            });
+
+            document.getElementById("exportJsonBtn").addEventListener("click", function () {
+                flashButtonSelected(this);
+                const features = traverseNodes.map((node, idx) => ({
+                    type: "Feature",
+                    properties: {
+                        id: idx === 0 ? "BASE" : `WP-${String(idx).padStart(2, "0")}`,
+                        role: idx === 0 ? "base_station" : "outpost_waypoint",
+                        label: node.label
+                    },
+                    geometry: {
+                        type: "Point",
+                        coordinates: [Number(node.latlng.lng.toFixed(4)), Number(node.latlng.lat.toFixed(4))]
+                    }
+                }));
+
+                if (traverseNodes.length > 1) {
+                    features.push({
+                        type: "Feature",
+                        properties: { role: "traverse_corridor", nodeCount: traverseNodes.length },
+                        geometry: {
+                            type: "LineString",
+                            coordinates: traverseNodes.map((n) => [
+                                Number(n.latlng.lng.toFixed(4)),
+                                Number(n.latlng.lat.toFixed(4))
+                            ])
+                        }
+                    });
+                }
+
+                const geojson = {
+                    type: "FeatureCollection",
+                    properties: {
+                        datum: "IAU-MARS-2015",
+                        planetRadiusKm: MARS_RADIUS_KM,
+                        exportedAt: new Date().toISOString()
+                    },
+                    features
+                };
+
+                triggerDownload(
+                    JSON.stringify(geojson, null, 2),
+                    "mars-outpost-traverse.geojson",
+                    "application/geo+json"
+                );
+                showToast("Downloaded mars-outpost-traverse.geojson");
+            });
+
+            document.getElementById("exportCsvBtn").addEventListener("click", function () {
+                flashButtonSelected(this);
+                const rows = [
+                    ["Node_ID", "Role", "Label", "Latitude_Deg", "Longitude_Deg", "Cumulative_Dist_Km", "Est_Elev_Km", "Est_H2_WEH_wt%"]
+                ];
+
+                let cumDist = 0;
+                traverseNodes.forEach((node, idx) => {
+                    if (idx > 0) {
+                        cumDist += computeMarsDistanceKm(traverseNodes[idx - 1].latlng, node.latlng);
+                    }
+                    const fields = samplePlanetaryFields(node.latlng.lat, node.latlng.lng);
+                    rows.push([
+                        idx === 0 ? "BASE" : `WP-${String(idx).padStart(2, "0")}`,
+                        idx === 0 ? "Base_Station" : "Outpost_Waypoint",
+                        `"${node.label.replace(/"/g, '""')}"`,
+                        node.latlng.lat.toFixed(4),
+                        node.latlng.lng.toFixed(4),
+                        cumDist.toFixed(2),
+                        fields.elevKm.toFixed(2),
+                        fields.h2WehPercent.toFixed(1)
+                    ]);
+                });
+
+                const csvContent = rows.map((r) => r.join(",")).join("\n");
+                triggerDownload(csvContent, "mars-outpost-waypoints.csv", "text/csv;charset=utf-8;");
+                showToast("Downloaded mars-outpost-waypoints.csv");
+            });
+
+            function triggerDownload(content, filename, mimeType) {
+                const blob = new Blob([content], { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            map.on("mousemove", function (e) {
+                if (!isWithinPlanetBounds(e.latlng)) {
+                    document.getElementById("probeLatLon").textContent = "OFF-MAP";
+                    document.getElementById("probeElev").textContent = "--";
+                    document.getElementById("probeH2").textContent = "--";
+                    document.getElementById("probeCO2").textContent = "--";
+                    return;
+                }
+
+                const fields = samplePlanetaryFields(e.latlng.lat, e.latlng.lng);
+                document.getElementById("probeLatLon").textContent = formatCoord(e.latlng.lat, e.latlng.lng);
+                document.getElementById("probeElev").textContent = `${fields.elevKm >= 0 ? "+" : ""}${fields.elevKm.toFixed(2)} km`;
+                document.getElementById("probeH2").textContent = `${fields.h2WehPercent.toFixed(1)} wt%`;
+                document.getElementById("probeCO2").textContent = `${fields.co2PressureMbar.toFixed(2)} mbar`;
+            });
+
+            updateTraverseTelemetry();
+        })();
+    </script>
+</body>
+</html>
