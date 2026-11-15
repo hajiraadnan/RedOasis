@@ -11,4 +11,4 @@ Using the **Sabatier reaction**, hydrogen extracted from Martian ice and carbon 
 
 ---
 
-`// code refined with AI`
+`// code refined using SI, most JS real-time update functions were written by Gemini`
