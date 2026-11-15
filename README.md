@@ -1,0 +1,1 @@
+An advanced, high-performance web-based GIS application built for planetary cartography and rover traverse planning on Mars. Designed with a sleek aerospace HUD interface, it allows researchers and mission planners to explore the Martian surface, analyze volatile distributions, and plot multi-node outpost routes.
